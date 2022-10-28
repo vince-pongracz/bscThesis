@@ -1,27 +1,37 @@
 
+from datasets import Dataset, Features
+import datasets
+import shutil
+from copyreg import pickle
 import re
-from PIL import Image
-from rawkit.options import WhiteBalance
-from rawkit.raw import Raw
-import imageio
+# from PIL import Image
+# from rawkit.options import WhiteBalance
+# from rawkit.raw import Raw
+# import imageio
 import rawpy
-import scipy.misc as misc
-from skimage import exposure
-import skimage
-import math
-import numpy as np
-from matplotlib import pyplot as plt
+# import scipy.misc as misc
+# from skimage import exposure
+# import skimage
+# import math
+# from matplotlib import pyplot as plt
+from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from keras import datasets, layers, models
 import pandas as pd
 import os
 import datetime
 
+# Python program to demonstrate
+# HDF5 file
+import numpy as np
+import h5py
+
 # image processing
 import cv2
 
 from exiftool import ExifToolHelper
+import tensorboard
 
 # TensorFlow
 import tensorflow as tf
@@ -83,30 +93,34 @@ def load_images_from_folder(folder: str):
     return imagesWithMeta
 
 
-def get_dataset_partitions(df: pd.DataFrame, train_split=0.8, val_split=0.1, test_split=0.1, shuffleData=True):
-    assert (train_split + test_split + val_split) == 1
+def get_dataset_partitions(df: pd.DataFrame, train_split=0.7, test_val_split=0.5):
 
-    ds_size = len(df)
+    train, testAndValid = train_test_split(df, test_size=(
+        1-train_split), random_state=42, shuffle=True)
+
+    test, valid = train_test_split(
+        testAndValid, test_size=test_val_split, random_state=43, shuffle=True)
+
+    return train, test, valid
+
+
+def convert(images, shuffleData=True, serialize=False, pklName: str = 'dataframe'):
     if shuffleData:
         # Specify seed to always have the same split distribution between runs
-        df = shuffle(df)
+        images = shuffle(images)
 
-    train_size = int(train_split * ds_size)
-    val_size = int(val_split * ds_size)
+    df = pd.DataFrame(images, columns=('raw', 'exif'))
 
-    train_ds = df.take([0, train_size])
-    val_ds = df.drop([0, train_size]).take([0, val_size])
-    test_ds = df.drop([0, train_size+val_size])
+    train, test, valid = get_dataset_partitions(df)
+    if serialize:
+        df.to_pickle(f'{pklName}_all.pkl', protocol=4)
+        train.to_pickle(f'{pklName}_train.pkl', protocol=4)
+        test.to_pickle(f'{pklName}_test.pkl', protocol=4)
+        valid.to_pickle(f'{pklName}_valid.pkl', protocol=4)
 
-    return train_ds, val_ds, test_ds
-
-
-def convert(images):
-    df = pd.DataFrame(images)
-    df.to_pickle('dataframe.pkl')
     # print(df)
     # print(df.describe())
-    return get_dataset_partitions(df)
+    return train, test, valid
 
 
 def readFromPkl(filename: str):
@@ -155,7 +169,7 @@ def compileAndTrainModel(model: models.Sequential, trainData: pd.DataFrame, test
 def readData(directory: str = 'resources\\raws'):
     imageData = []
     xmpData = []
-    
+
     for filename in os.listdir(directory):
         fullName = os.path.join(directory, filename)
         if fullName.endswith('.xmp'):
@@ -171,13 +185,14 @@ def readData(directory: str = 'resources\\raws'):
     return imagesWithMeta
 
 
-def readRawSimple(fullNameWithPath: str = 'resources\\raws\\temp.ARW'):
+def readRawSimple(fullNameWithPath: str = 'resources\\raws\\temp.ARW', new_size: list[int] = [133, 200], return_as_tensor: bool = False):
     with rawpy.imread(fullNameWithPath) as rawImg:
         rgbImg = rawImg.postprocess(rawpy.Params(use_camera_wb=True))
         rgbNormed = rgbImg / 255.0
-        new_size = [200, 300]
         bilinear = tf.image.resize(
-            rgbNormed, new_size, method=ResizeMethod.BILINEAR, preserve_aspect_ratio=True).numpy()
+            rgbNormed, new_size, method=ResizeMethod.BILINEAR, preserve_aspect_ratio=True)
+        if not return_as_tensor:
+            bilinear = bilinear.numpy
         return bilinear
 
 
@@ -239,21 +254,97 @@ def generateXmpResult(path: str = 'resources\\raws', pictureName: str = 'sample4
         xmpFile.write(xmpString)
 
 
-if __name__ == '__main__':
-    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+def cleanData(directory: str = 'resources\\rawTest') -> None:
+    files = os.listdir(directory)
 
-    # path = "resources\\testJpgs"
-    # images = load_images_from_folder(path)
-    # tr, val, tst = convert(images)
-    # tr, val, tst = readFromPkl('dataframe.pkl')
+    # TODO unique constraint for the samples
+
+    acceptedExtensions = ['xmp', 'ARW', 'arw', 'NEF', 'nef', 'cr2', 'CR2']
+
+    for file in files:
+        fullName = os.path.join(directory, file)
+        name, extension = file.split('.')
+        if (extension not in acceptedExtensions):
+            os.remove(fullName)
+            files.remove(file)
+        else:
+            regex = re.compile(f'{name}.*')
+            count = len(list(filter(regex.match, files)))
+            if (count != 2):
+                # print(f'remove: {fullName}')
+                os.remove(fullName)
+                files.remove(file)
+
+
+def data_load_and_preprocess(directory: str = f'resources{os.path.sep}raws', pathToJPGs: str = f'resources{os.path.sep}genJPGs'):
+
+    rawImages: np.array = []
+    xmpData: np.array = []
+    files = os.listdir(directory)
+    if not os.path.exists(pathToJPGs):
+        os.mkdir(pathToJPGs)
+    convertedImageSize = [133, 200]
+
+    for file in files:
+        name, ext = file.split('.')
+        if ext != 'xmp':
+            with rawpy.imread(f'{directory}{os.path.sep}{file}') as rawImg:
+                rgbImg = rawImg.postprocess(rawpy.Params(use_camera_wb=True))
+                rgbNormed = rgbImg / 255.0
+                bilinear = tf.image.resize(
+                    rgbNormed, convertedImageSize, method=ResizeMethod.BILINEAR)
+                jpgName = f'{pathToJPGs}{os.path.sep}{name}.jpg'
+                tf.keras.utils.save_img(jpgName, bilinear)
+                rawImages.append(bilinear)
+        else:
+            with ExifToolHelper() as et:
+                fileName = f'{directory}{os.path.sep}{file}'
+                shutil.copyfile(fileName, f'{pathToJPGs}{os.path.sep}{file}')
+                meta = et.execute_json(fileName)
+                processedExif = tf.convert_to_tensor(process_meta(meta))
+                xmpData.append(processedExif)
+
+    # images = tf.keras.utils.image_dataset_from_directory(directory=directory, image_size=tuple(convertedImageSize))
+    print('test tensorflow load')
+
+    return rawImages, xmpData
+
+def saveDatasets(imgs, xmps, path: str = f'datasets{os.path.sep}ds') -> None:
+    ds = Dataset.from_dict({"img": imgs, "exif": xmps})
+    ds.save_to_disk(path)
+    
+    
+def loadDataset(path:str = f'datasets{os.path.sep}ds') -> Dataset:
+    ds = datasets.load_from_disk(path)
+    print('load done')
+    return ds
+
+
+if __name__ == '__main__':
+    assert (pd.__version__ == '1.3.5')
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+    print('Tensorflow version: '+ tf.__version__)
+
+    path = "resources\\raws"
+    # cleanData(path)
+    # imagesWithMeta = list(readData(path))
+    # tr, val, tst = convert(imagesWithMeta)
+
+    # imgs, xmps = data_load_and_preprocess()
+    # saveDatasets(imgs, xmps)
+    
+    # ds = ds.to_tf_dataset(columns=['img'], label_cols=['exif'], batch_size=2, shuffle=True)
+
+    ds = loadDataset()
+    
+
+    # jpgDir = f'resources{os.path.sep}genJPGs'
+    # images = tf.keras.utils.image_dataset_from_directory(directory=jpgDir, image_size=(133,200))
 
     # print(val)
     # rgbNormed = readRaw()
     # xmpTest = generateXmpResult()
     # rawTest = readRawSimple()
-    
-    imagesWithMeta = list(readData())
+
     # item = imagesWithMeta[0]
-    
-    
     print('done')

@@ -1,0 +1,58 @@
+{
+  "fields": [
+    {
+      "name": "img",
+      "type": {
+        "children": [
+          {
+            "name": "item",
+            "type": {
+              "children": [
+                {
+                  "name": "item",
+                  "type": {
+                    "children": [
+                      {
+                        "name": "item",
+                        "type": {
+                          "precision": 1
+                        },
+                        "nullable": true,
+                        "metadata": {}
+                      }
+                    ]
+                  },
+                  "nullable": true,
+                  "metadata": {}
+                }
+              ]
+            },
+            "nullable": true,
+            "metadata": {}
+          }
+        ]
+      },
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "exif",
+      "type": {
+        "children": [
+          {
+            "name": "item",
+            "type": {
+              "precision": 1
+            },
+            "nullable": true,
+            "metadata": {}
+          }
+        ]
+      },
+      "nullable": true,
+      "metadata": {}
+    }
+  ],
+  "metadata": {},
+  "dictionaries": {}
+}
