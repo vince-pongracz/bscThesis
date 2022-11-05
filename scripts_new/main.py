@@ -1,4 +1,5 @@
 
+from tensorflow.keras.models import load_model
 from datasets import Dataset, Features
 import datasets
 import shutil
@@ -130,7 +131,7 @@ def readFromPkl(filename: str):
 
 def buildModel(in_shape, out_shape):
 
-    model = models.Sequential()
+    model = nn_models.Sequential()
 
     model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=in_shape))
     model.add(layers.MaxPooling2D((2, 2)))
@@ -223,15 +224,22 @@ def readRaw(path: str = 'resources\\raws', picName: str = 'temp.ARW'):
 
 
 class Correction:
-    def __init__(self, colorTemp, tint, brightness, contrast, vibrance):
-        self.colorTemp = colorTemp
-        self.tint = tint
-        self.brightness = brightness
-        self.contrast = contrast
-        self.vibrance = vibrance
+    num_pred: int = 5
+    # def __init__(self, colorTemp, tint, brightness, contrast, vibrance):
+    #     self.colorTemp = colorTemp
+    #     self.tint = tint
+    #     self.brightness = brightness
+    #     self.contrast = contrast
+    #     self.vibrance = vibrance
+    def __init__(self, pred_list: list):
+        list_len = len(pred_list)
+        for i in range(Correction.num_pred - list_len):
+            pred_list.append(0)
+            
+        [self.colorTemp, self.tint, self.brightness, self.contrast, self.vibrance] = pred_list
 
 
-def generateXmpResult(path: str = 'resources\\raws', pictureName: str = 'sample4.NEF', correction: Correction = Correction(7000, -4, 1.3, 10, 4)):
+def generateXmpResult(path: str = 'resources\\raws', pictureName: str = 'sample4.NEF', correction: Correction = Correction([7000, -4, 1.3, 10, 4])):
     fullFileNameRaw = os.path.join(path, pictureName)
     fullFileNameXmp = fullFileNameRaw.split(".")[0] + ".xmp"
 
@@ -309,64 +317,108 @@ def data_load_and_preprocess(directory: str = f'resources{os.path.sep}raws', pat
 
     return rawImages, xmpData
 
+
 def saveDatasets(imgs, xmps, path: str = f'datasets{os.path.sep}ds') -> None:
     ds = Dataset.from_dict({"img": imgs, "exif": xmps})
     ds.save_to_disk(path)
     # TODO push to google drive :D
     print('dataset saved!')
-    
-    
-def loadDataset(path:str = f'datasets{os.path.sep}ds') -> Dataset:
+
+
+def loadDataset(path: str = f'datasets{os.path.sep}ds') -> Dataset:
     ds = datasets.load_from_disk(path)
     print('load done')
     return ds
 
-def prepareToPrediction(directory: str = f'resources{os.path.sep}raws', pathToJPGs: str = f'resources{os.path.sep}genJPGs'):
-    
+
+def prepareToPrediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir: str = f'resources{os.path.sep}predictOnThem', save_jpg: bool = False) -> list:
+
     images: np.array = []
-    files = os.listdir(directory)
-    
-    if not os.path.exists(pathToJPGs):
-        os.mkdir(pathToJPGs)
-    
+    image_names = []
+    files = os.listdir(raw_dir)
+
+    if save_jpg and not os.path.exists(jpg_dir):
+        os.mkdir(jpg_dir)
+
     convertedImageSize = [133, 200]
 
     for file in files:
         name, ext = file.split('.')
-        with rawpy.imread(f'{directory}{os.path.sep}{file}') as rawImg:
+        if ext != 'xmp':
+            with rawpy.imread(f'{raw_dir}{os.path.sep}{file}') as rawImg:
                 rgbImg = rawImg.postprocess(rawpy.Params(use_camera_wb=True))
                 rgbNormed = rgbImg / 255.0
-                bilinear = tf.image.resize(
+                bilinear_img = tf.image.resize(
                     rgbNormed, convertedImageSize, method=ResizeMethod.BILINEAR)
-                jpgName = f'{pathToJPGs}{os.path.sep}{name}.jpg'
-                tf.keras.utils.save_img(jpgName, bilinear)
-                images.append(bilinear)
-    
+                if save_jpg:
+                    jpgName = f'{jpg_dir}{os.path.sep}{name}.jpg'
+                    tf.keras.utils.save_img(jpgName, bilinear_img)
+                images.append(bilinear_img)
+                image_names.append(name)
+
     print('preparePredict')
 
-    return images
+    return images, image_names
+
+
+def load_models(path: str = 'models', file_format: str = 'h5'):
+    print(f'load models from: {path}')
+    model_files = os.listdir(path)
+    num_models = len(model_files)
+    models = []
+    for i in range(num_models):
+        model = load_model(f'{path}{os.path.sep}model_{i}.{file_format}')
+        models.append(model)
+    return models
+
+
+def predict_on_models(images, models: list):
+    all_predictions = []
+    for img in images:
+        img_predictions = []
+        img = tf.expand_dims(img, axis=0)
+        for m in models:
+            # print(img.shape)
+            m_res = m.predict(img)
+            m_res = np.ndarray.flatten(m_res)[0]
+            img_predictions.append(m_res)
+        # print(img_predictions)
+        all_predictions.append(img_predictions)
+
+    return all_predictions
+
+
+def gen_batch_xmps(target_dir:str, img_names_and_predictions):
+    for pic_name, pred in img_names_and_predictions:
+        corr = Correction(pred)
+        generateXmpResult(target_dir, pictureName=pic_name, correction=corr)
+    
 
 if __name__ == '__main__':
     assert (pd.__version__ == '1.3.5')
     print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-    print('Tensorflow version: '+ tf.__version__)
+    print('Tensorflow version: ' + tf.__version__)
 
     raw_path = "resources\\raws"
     rawBigger_path = f'resources{os.path.sep}rawTest'
+
+    nn_models = load_models()
+    # imgs, xmps = data_load_and_preprocess(directory=rawBigger_path)
+    # saveDatasets(imgs, xmps)
+
+    images, image_names = prepareToPrediction(raw_path)
+    preds = predict_on_models(images, nn_models)
+    pred_result = list(zip(image_names, preds))
+    gen_batch_xmps(raw_path, pred_result)
+    
+    print(pred_result)
+
     # cleanData(path)
     # imagesWithMeta = list(readData(path))
     # tr, val, tst = convert(imagesWithMeta)
 
-    imgs, xmps = data_load_and_preprocess(directory=rawBigger_path)
-    saveDatasets(imgs, xmps)
-        
-    # ds = ds.to_tf_dataset(columns=['img'], label_cols=['exif'], batch_size=2, shuffle=True)
-
-    # ds = loadDataset()
-    
-
-    # jpgDir = f'resources{os.path.sep}genJPGs'
-    # images = tf.keras.utils.image_dataset_from_directory(directory=jpgDir, image_size=(133,200))
+    # imgs, xmps = data_load_and_preprocess(directory=rawBigger_path)
+    # saveDatasets(imgs, xmps)
 
     # print(val)
     # rgbNormed = readRaw()
