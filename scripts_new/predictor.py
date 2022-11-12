@@ -1,33 +1,31 @@
 
-import threading
-from tensorflow.keras.models import load_model
-from datasets import Dataset, Features
+from distutils.util import strtobool
+import pathlib
+
+import argparse
+
 import datasets
+from datasets import Dataset
+
 import shutil
 from copyreg import pickle
 import re
-# from PIL import Image
-# from rawkit.options import WhiteBalance
-# from rawkit.raw import Raw
-# import imageio
+
 import rawpy
-# import scipy.misc as misc
-# from skimage import exposure
-# import skimage
-# import math
-# from matplotlib import pyplot as plt
+
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 # import matplotlib.pyplot as plt
 from keras import datasets, layers, models
+
 import pandas as pd
+
 import os
 import datetime
 
 # Python program to demonstrate
 # HDF5 file
 import numpy as np
-import h5py
 
 # image processing
 import cv2
@@ -39,6 +37,7 @@ import subprocess
 
 # TensorFlow
 import tensorflow as tf
+from tensorflow.keras.models import load_model
 ResizeMethod = tf.image.ResizeMethod
 
 
@@ -256,7 +255,8 @@ def generateXmpResult(path: str = 'resources\\raws', pictureName: str = 'sample4
                 crs:Tint="{correction.tint}"
                 crs:Exposure2012="{correction.brightness}"
                 crs:Contrast2012="{correction.contrast}"
-                crs:Vibrance="{correction.vibrance}">
+                crs:Vibrance="{correction.vibrance}"
+                crs:AutoLateralCA="1">
             </rdf:Description>
         </rdf:RDF>
     </x:xmpmeta>"""
@@ -333,6 +333,7 @@ def loadDataset(path: str = f'datasets{os.path.sep}ds') -> Dataset:
     print('load done')
     return ds
 
+convertedImageSize = [133, 200]
 
 def prepareToPrediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir: str = f'resources{os.path.sep}predictOnThem', save_jpg: bool = False) -> list:
 
@@ -342,8 +343,6 @@ def prepareToPrediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir: s
 
     if save_jpg and not os.path.exists(jpg_dir):
         os.mkdir(jpg_dir)
-
-    convertedImageSize = [133, 200]
 
     for file in files:
         name, ext = file.split('.')
@@ -412,32 +411,70 @@ def move_results(source: str, target: str) -> None:
     print('move done')
     
 
-def open_lr(lr_path:str):
+def open_lightroom(lr_path:str):
     subprocess.run([lr_path])
-
+    
 
 if __name__ == '__main__':
     assert (pd.__version__ == '1.3.5')
+    
+    # Defaults
+    raw_source_path = "resources\\raws"
+    lr_target_path = 'resources\\auto_imp_dir'
+    path_to_models = 'models'
+    lr_executable_path = 'C:\\Program Files\\Adobe\\Adobe Lightroom Classic\\Lightroom.exe'
+    
+    rawBigger_path = f'resources{os.path.sep}rawTest'
+    
+    program_description = "This program helps to speed up retouching"
+    
+    # keep LR exec and LR target dir in environment variables
+    parser = argparse.ArgumentParser(description=program_description)
+    parser.add_argument("raw_source_dir", type=pathlib.Path, help='path to the raw image source directory')
+    parser.add_argument("lr_target_dir", type=pathlib.Path, help='target dir for lightroom open, here will the predictions and the original photos land')
+    parser.add_argument("-m", "--path_to_models", type=pathlib.Path, default=path_to_models, help='Specify the path to the models, which are required to predict retouch values')
+    parser.add_argument('-o',"--open_up_LR", choices=('True','False'), help='Switches ON/OFF auto-Lightroom start', default='True')
+    parser.add_argument("-LRe", "--lr_executable_path", type=pathlib.Path, default=lr_executable_path, help=f'Specify where to find Lightroom executable, default: {lr_executable_path}')
+    
+    args = parser.parse_args()
+    # argument assignments
+    raw_source_path = str(args.raw_source_dir)
+    lr_target_path = str(args.lr_target_dir)
+    path_to_models = str(args.path_to_models)
+    open_lr_after_pred = bool(strtobool(args.open_up_LR))
+    
+    env_LR = os.environ.get('LR') # returns None if not present
+    if not env_LR == None:
+        lr_executable_path = str(env_LR)
+    else:
+        lr_executable_path = str(args.lr_executable_path)
+    
+    print('--- start script ---')
+    print(' with the following settings :')
+    print(' ----- ')
+    print(f' source dir: {raw_source_path}')
+    print(f' target dir: {lr_target_path}')
+    print(f' path to models: {path_to_models}')
+    print(f' LR opens: {open_lr_after_pred}')
+    print(f' LR executable: {lr_executable_path}')
+    print(' ----- ')
+    print('Diagnostic:')
     print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
     print('Tensorflow version: ' + tf.__version__)
-
-    raw_path = "resources\\raws"
-    lr_target_dir = 'resources\\auto_imp_dir'
-    lr_executable_path = 'C:\\Program Files\\Adobe\\Adobe Lightroom Classic\\Lightroom.exe'
-    rawBigger_path = f'resources{os.path.sep}rawTest'
-
-    nn_models = load_models()
+    
+    nn_models = load_models(path=path_to_models)
     # imgs, xmps = data_load_and_preprocess(directory=rawBigger_path)
     # saveDatasets(imgs, xmps)
 
-    images, image_names = prepareToPrediction(raw_path)
+    images, image_names = prepareToPrediction(raw_source_path)
     preds = predict_on_models(images, nn_models)
     pred_result = list(zip(image_names, preds))
-    gen_batch_xmps(raw_path, pred_result)
+    gen_batch_xmps(raw_source_path, pred_result)
     
-    move_results(raw_path, lr_target_dir)
+    move_results(raw_source_path, lr_target_path)
     
-    open_lr(lr_executable_path)
+    if open_lr_after_pred:
+        open_lightroom(lr_executable_path)
     
     # print(pred_result)
 
@@ -453,5 +490,4 @@ if __name__ == '__main__':
     # xmpTest = generateXmpResult()
     # rawTest = readRawSimple()
 
-    # item = imagesWithMeta[0]
-    print('run ended')
+    print('--- script ended ---')
