@@ -1,4 +1,5 @@
 
+import threading
 from tensorflow.keras.models import load_model
 from datasets import Dataset, Features
 import datasets
@@ -33,6 +34,8 @@ import cv2
 
 from exiftool import ExifToolHelper
 import tensorboard
+
+import subprocess
 
 # TensorFlow
 import tensorflow as tf
@@ -394,12 +397,33 @@ def gen_batch_xmps(target_dir:str, img_names_and_predictions):
         generateXmpResult(target_dir, pictureName=pic_name, correction=corr)
     
 
+def move_results(source: str, target: str) -> None:
+    allfiles = os.listdir(source)
+    
+    for file in allfiles:
+        target_name = target + os.path.sep + file
+        
+        if os.path.exists(target_name):
+            print(target_name,'exists in the destination path - overwrite!')
+            os.remove(target_name)
+            
+        shutil.move(os.path.join(source, file), target)
+
+    print('move done')
+    
+
+def open_lr(lr_path:str):
+    subprocess.run([lr_path])
+
+
 if __name__ == '__main__':
     assert (pd.__version__ == '1.3.5')
     print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
     print('Tensorflow version: ' + tf.__version__)
 
     raw_path = "resources\\raws"
+    lr_target_dir = 'resources\\auto_imp_dir'
+    lr_executable_path = 'C:\\Program Files\\Adobe\\Adobe Lightroom Classic\\Lightroom.exe'
     rawBigger_path = f'resources{os.path.sep}rawTest'
 
     nn_models = load_models()
@@ -411,7 +435,11 @@ if __name__ == '__main__':
     pred_result = list(zip(image_names, preds))
     gen_batch_xmps(raw_path, pred_result)
     
-    print(pred_result)
+    move_results(raw_path, lr_target_dir)
+    
+    open_lr(lr_executable_path)
+    
+    # print(pred_result)
 
     # cleanData(path)
     # imagesWithMeta = list(readData(path))
@@ -426,4 +454,4 @@ if __name__ == '__main__':
     # rawTest = readRawSimple()
 
     # item = imagesWithMeta[0]
-    print('done')
+    print('run ended')
