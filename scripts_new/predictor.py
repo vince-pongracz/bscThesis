@@ -443,6 +443,7 @@ if __name__ == '__main__':
     path_to_models = str(args.path_to_models)
     open_lr_after_pred = bool(strtobool(args.open_up_LR))
     
+    # get LR exe from configured env variable
     env_LR = os.environ.get('LR') # returns None if not present
     if not env_LR == None:
         lr_executable_path = str(env_LR)
@@ -481,10 +482,10 @@ if __name__ == '__main__':
     # cleanData(path)
     # imagesWithMeta = list(readData(path))
     # tr, val, tst = convert(imagesWithMeta)
-
+    # ----
     # imgs, xmps = data_load_and_preprocess(directory=rawBigger_path)
     # saveDatasets(imgs, xmps)
-
+    # ----
     # print(val)
     # rgbNormed = readRaw()
     # xmpTest = generateXmpResult()
