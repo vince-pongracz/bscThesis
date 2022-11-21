@@ -1,5 +1,6 @@
 
 import os
+import re
 
 import numpy as np
 
@@ -35,6 +36,27 @@ def process_meta(exifMeta: list):
     ]
     return processed
 
+def cleanData(directory: str = 'resources\\rawTest') -> None:
+    files = os.listdir(directory)
+
+    # TODO unique constraint for the samples
+
+    acceptedExtensions = ['xmp', 'ARW', 'arw', 'NEF', 'nef', 'cr2', 'CR2']
+
+    for file in files:
+        fullName = os.path.join(directory, file)
+        name, extension = file.split('.')
+        if (extension not in acceptedExtensions):
+            os.remove(fullName)
+            files.remove(file)
+        else:
+            regex = re.compile(f'{name}.*')
+            count = len(list(filter(regex.match, files)))
+            if (count != 2):
+                # print(f'remove: {fullName}')
+                os.remove(fullName)
+                files.remove(file)
+
 def data_load_and_preprocess(directory: str = f'resources{os.path.sep}raws', path_to_generated_jpgs: str = f'resources{os.path.sep}genJPGs'):
 
     rawImages: np.array = []
@@ -43,19 +65,26 @@ def data_load_and_preprocess(directory: str = f'resources{os.path.sep}raws', pat
     if not os.path.exists(path_to_generated_jpgs):
         os.mkdir(path_to_generated_jpgs)
     convertedImageSize = [133, 200]
+    
+    bits_for_color = 16
+    scale_color_space = float(2 ** bits_for_color)
+    save_jpgs = True
 
     for file in files:
         name, ext = file.split('.')
+        # check if it is a raw file
         if ext != 'xmp':
             with rawpy.imread(f'{directory}{os.path.sep}{file}') as rawImg:
-                rgbImg = rawImg.postprocess(rawpy.Params(use_camera_wb=True))
-                rgbNormed = rgbImg / 255.0
+                # additional parameter to postprocess: rawpy.Params(use_camera_wb=True)
+                rgbImg = rawImg.postprocess(rawpy.Params(output_bps=bits_for_color))
+                rgbNormed = rgbImg / scale_color_space
                 bilinear = tf.image.resize(
                     rgbNormed, convertedImageSize, method=ResizeMethod.BILINEAR)
-                jpgName = f'{path_to_generated_jpgs}{os.path.sep}{name}.jpg'
-                tf.keras.utils.save_img(jpgName, bilinear)
+                if save_jpgs:
+                    jpgName = f'{path_to_generated_jpgs}{os.path.sep}{name}.jpg'
+                    tf.keras.utils.save_img(jpgName, bilinear)
                 rawImages.append(bilinear)
-        else:
+        else: # so it is an .xmp file
             with ExifToolHelper() as et:
                 fileName = f'{directory}{os.path.sep}{file}'
                 shutil.copyfile(fileName, f'{path_to_generated_jpgs}{os.path.sep}{file}')
@@ -75,7 +104,7 @@ def saveDatasets(imgs, xmps, target_path: str = f'datasets{os.path.sep}ds', add_
         date = datetime.now()
         currDate = '{:04d}{:02d}{:2d}_{:02d}{:2d}{:2d}'.format(date.year, date.month, date.day, date.hour, date.minute, date.second )
         target_path = f'{target_path}_{currDate}'
-    
+    # https://huggingface.co/docs/datasets/package_reference/main_classes
     ds.save_to_disk(target_path)
     # TODO push ds to google drive :D
     print('dataset saved!')
@@ -86,12 +115,13 @@ print('PREPROCESS DATA')
 print('---script starts---')
 
 # edit these
-rawBigger_path = f'resources{os.path.sep}raw_imgs'
+rawBigger_path = f'resources{os.path.sep}rawTest'
 path_to_gen_jpgs = f'resources{os.path.sep}tempjpgs'
 
 # can stay like that
 ds_path_default = f'datasets{os.path.sep}ds'
 
+cleanData(rawBigger_path)
 imgs, xmps = data_load_and_preprocess(directory=rawBigger_path, path_to_generated_jpgs=path_to_gen_jpgs)
 saveDatasets(imgs, xmps)
 

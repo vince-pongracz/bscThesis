@@ -251,11 +251,11 @@ def generateXmpResult(path: str = 'resources\\raws', pictureName: str = 'sample4
         <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
             <rdf:Description rdf:about=""
                 xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/"
-                crs:Temperature="{correction.colorTemp}"
-                crs:Tint="{correction.tint}"
+                crs:Temperature="{round(correction.colorTemp)}"
+                crs:Tint="{round(correction.tint)}"
                 crs:Exposure2012="{correction.brightness}"
-                crs:Contrast2012="{correction.contrast}"
-                crs:Vibrance="{correction.vibrance}"
+                crs:Contrast2012="{round(correction.contrast)}"
+                crs:Vibrance="{round(correction.vibrance)}"
                 crs:AutoLateralCA="1">
             </rdf:Description>
         </rdf:RDF>
@@ -390,13 +390,13 @@ def predict_on_models(images, models: list):
     return all_predictions
 
 
-def gen_batch_xmps(target_dir:str, img_names_and_predictions):
+def generate_batch_xmps(target_dir:str, img_names_and_predictions):
     for pic_name, pred in img_names_and_predictions:
         corr = Correction(pred)
         generateXmpResult(target_dir, pictureName=pic_name, correction=corr)
     
 
-def move_results(source: str, target: str) -> None:
+def move_results(source: str, target: str, create_copy: bool = False) -> None:
     allfiles = os.listdir(source)
     
     for file in allfiles:
@@ -405,8 +405,12 @@ def move_results(source: str, target: str) -> None:
         if os.path.exists(target_name):
             print(target_name,'exists in the destination path - overwrite!')
             os.remove(target_name)
-            
-        shutil.move(os.path.join(source, file), target)
+        img_source_path = os.path.join(source, file)
+        
+        if create_copy:
+            shutil.copyfile(img_source_path, target_name)
+        else:
+            shutil.move(img_source_path, target)
 
     print('move done')
     
@@ -419,22 +423,24 @@ if __name__ == '__main__':
     assert (pd.__version__ == '1.3.5')
     
     # Defaults
-    raw_source_path = "resources\\raws"
-    lr_target_path = 'resources\\auto_imp_dir'
+    sep = os.path.sep
+    raw_source_path = f'resources{sep}raws'
+    lr_target_path = f'resources{sep}auto_imp_dir'
     path_to_models = 'models'
-    lr_executable_path = 'C:\\Program Files\\Adobe\\Adobe Lightroom Classic\\Lightroom.exe'
+    lr_executable_path = f'C:{sep}Program Files{sep}Adobe{sep}Adobe Lightroom Classic{sep}Lightroom.exe'
     
-    rawBigger_path = f'resources{os.path.sep}rawTest'
+    rawBigger_path = f'resources{sep}rawTest'
     
     program_description = "This program helps to speed up retouching"
     
     # keep LR exec and LR target dir in environment variables
     parser = argparse.ArgumentParser(description=program_description)
     parser.add_argument("raw_source_dir", type=pathlib.Path, help='path to the raw image source directory')
-    parser.add_argument("lr_target_dir", type=pathlib.Path, help='target dir for lightroom open, here will the predictions and the original photos land')
+    parser.add_argument("--lr_target_dir", default=lr_target_path, type=pathlib.Path, help='target dir for lightroom open, here will the predictions and the original photos land')
     parser.add_argument("-m", "--path_to_models", type=pathlib.Path, default=path_to_models, help='Specify the path to the models, which are required to predict retouch values')
     parser.add_argument('-o',"--open_up_LR", choices=('True','False'), help='Switches ON/OFF auto-Lightroom start', default='True')
     parser.add_argument("-LRe", "--lr_executable_path", type=pathlib.Path, default=lr_executable_path, help=f'Specify where to find Lightroom executable, default: {lr_executable_path}')
+    parser.add_argument("-c", '--create_copy', choices=('True','False'), help='Leave raw files where they were or bring them under Lightroom', default='False')
     
     args = parser.parse_args()
     # argument assignments
@@ -442,6 +448,7 @@ if __name__ == '__main__':
     lr_target_path = str(args.lr_target_dir)
     path_to_models = str(args.path_to_models)
     open_lr_after_pred = bool(strtobool(args.open_up_LR))
+    create_copy = bool(strtobool(args.create_copy))
     
     # get LR exe from configured env variable
     env_LR = os.environ.get('LR') # returns None if not present
@@ -458,6 +465,7 @@ if __name__ == '__main__':
     print(f' path to models: {path_to_models}')
     print(f' LR opens: {open_lr_after_pred}')
     print(f' LR executable: {lr_executable_path}')
+    print(f' create copy: {create_copy}')
     print(' ----- ')
     print('Diagnostic:')
     print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
@@ -470,9 +478,9 @@ if __name__ == '__main__':
     images, image_names = prepareToPrediction(raw_source_path)
     preds = predict_on_models(images, nn_models)
     pred_result = list(zip(image_names, preds))
-    gen_batch_xmps(raw_source_path, pred_result)
+    generate_batch_xmps(raw_source_path, pred_result)
     
-    move_results(raw_source_path, lr_target_path)
+    move_results(raw_source_path, lr_target_path, create_copy=create_copy)
     
     if open_lr_after_pred:
         open_lightroom(lr_executable_path)
@@ -483,6 +491,7 @@ if __name__ == '__main__':
     # imagesWithMeta = list(readData(path))
     # tr, val, tst = convert(imagesWithMeta)
     # ----
+    # cleanData(path)
     # imgs, xmps = data_load_and_preprocess(directory=rawBigger_path)
     # saveDatasets(imgs, xmps)
     # ----
