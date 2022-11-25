@@ -115,14 +115,14 @@ print('PREPROCESS DATA')
 print('---script starts---')
 
 # edit these
-rawBigger_path = f'resources{os.path.sep}rawTest'
-path_to_gen_jpgs = f'resources{os.path.sep}tempjpgs'
+raw_bigger_path = f'resources{os.path.sep}rawSzakest'
+path_to_gen_jpgs = f'resources{os.path.sep}tempjpgs_szakest'
 
 # can stay like that
-ds_path_default = f'datasets{os.path.sep}ds'
+ds_path_default = f'datasets{os.path.sep}ds_szakest'
 
-cleanData(rawBigger_path)
-imgs, xmps = data_load_and_preprocess(directory=rawBigger_path, path_to_generated_jpgs=path_to_gen_jpgs)
-saveDatasets(imgs, xmps)
+cleanData(raw_bigger_path)
+imgs, xmps = data_load_and_preprocess(directory=raw_bigger_path, path_to_generated_jpgs=path_to_gen_jpgs)
+saveDatasets(imgs, xmps, target_path=ds_path_default)
 
 print('---script ended---')

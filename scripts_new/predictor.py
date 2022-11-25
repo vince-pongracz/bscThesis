@@ -241,7 +241,7 @@ class Correction:
         [self.colorTemp, self.tint, self.brightness, self.contrast, self.vibrance] = pred_list
 
 
-def generateXmpResult(path: str = 'resources\\raws', pictureName: str = 'sample4.NEF', correction: Correction = Correction([7000, -4, 1.3, 10, 4])):
+def generate_xmp_result(path: str = 'resources\\raws', pictureName: str = 'sample4.NEF', correction: Correction = Correction([7000, -4, 1.3, 10, 4])):
     fullFileNameRaw = os.path.join(path, pictureName)
     fullFileNameXmp = fullFileNameRaw.split(".")[0] + ".xmp"
 
@@ -335,11 +335,14 @@ def loadDataset(path: str = f'datasets{os.path.sep}ds') -> Dataset:
 
 convertedImageSize = [133, 200]
 
-def prepareToPrediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir: str = f'resources{os.path.sep}predictOnThem', save_jpg: bool = False) -> list:
+def prepare_to_prediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir: str = f'resources{os.path.sep}predictOnThem', save_jpg: bool = False) -> list:
 
     images: np.array = []
     image_names = []
     files = os.listdir(raw_dir)
+    
+    bits_for_color = 16
+    scale_color_space = float(2 ** bits_for_color)
 
     if save_jpg and not os.path.exists(jpg_dir):
         os.mkdir(jpg_dir)
@@ -348,8 +351,8 @@ def prepareToPrediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir: s
         name, ext = file.split('.')
         if ext != 'xmp':
             with rawpy.imread(f'{raw_dir}{os.path.sep}{file}') as rawImg:
-                rgbImg = rawImg.postprocess(rawpy.Params(use_camera_wb=True))
-                rgbNormed = rgbImg / 255.0
+                rgbImg = rawImg.postprocess(rawpy.Params(output_bps=bits_for_color))
+                rgbNormed = rgbImg / scale_color_space
                 bilinear_img = tf.image.resize(
                     rgbNormed, convertedImageSize, method=ResizeMethod.BILINEAR)
                 if save_jpg:
@@ -367,6 +370,7 @@ def load_models(path: str = 'models', file_format: str = 'h5'):
     print(f'load models from: {path}')
     model_files = os.listdir(path)
     num_models = len(model_files)
+    # assert(num_models == 5)
     models = []
     for i in range(num_models):
         model = load_model(f'{path}{os.path.sep}model_{i}.{file_format}')
@@ -393,7 +397,7 @@ def predict_on_models(images, models: list):
 def generate_batch_xmps(target_dir:str, img_names_and_predictions):
     for pic_name, pred in img_names_and_predictions:
         corr = Correction(pred)
-        generateXmpResult(target_dir, pictureName=pic_name, correction=corr)
+        generate_xmp_result(target_dir, pictureName=pic_name, correction=corr)
     
 
 def move_results(source: str, target: str, create_copy: bool = False) -> None:
@@ -475,7 +479,7 @@ if __name__ == '__main__':
     # imgs, xmps = data_load_and_preprocess(directory=rawBigger_path)
     # saveDatasets(imgs, xmps)
 
-    images, image_names = prepareToPrediction(raw_source_path)
+    images, image_names = prepare_to_prediction(raw_source_path)
     preds = predict_on_models(images, nn_models)
     pred_result = list(zip(image_names, preds))
     generate_batch_xmps(raw_source_path, pred_result)
@@ -485,8 +489,10 @@ if __name__ == '__main__':
     if open_lr_after_pred:
         open_lightroom(lr_executable_path)
     
-    # print(pred_result)
+    print('--- script ended ---')
 
+    # print(pred_result)
+    # ----
     # cleanData(path)
     # imagesWithMeta = list(readData(path))
     # tr, val, tst = convert(imagesWithMeta)
@@ -499,5 +505,3 @@ if __name__ == '__main__':
     # rgbNormed = readRaw()
     # xmpTest = generateXmpResult()
     # rawTest = readRawSimple()
-
-    print('--- script ended ---')
