@@ -115,11 +115,11 @@ print('PREPROCESS DATA')
 print('---script starts---')
 
 # edit these
-raw_bigger_path = f'resources{os.path.sep}rawSzakest'
-path_to_gen_jpgs = f'resources{os.path.sep}tempjpgs_szakest'
+raw_bigger_path = f'resources{os.path.sep}mixed_ds'
+path_to_gen_jpgs = f'resources{os.path.sep}tempjpgs_mixed'
 
 # can stay like that
-ds_path_default = f'datasets{os.path.sep}ds_szakest'
+ds_path_default = f'datasets{os.path.sep}ds_mixed'
 
 cleanData(raw_bigger_path)
 imgs, xmps = data_load_and_preprocess(directory=raw_bigger_path, path_to_generated_jpgs=path_to_gen_jpgs)

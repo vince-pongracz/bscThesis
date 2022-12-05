@@ -9,25 +9,16 @@ from datasets import Dataset
 
 import shutil
 from copyreg import pickle
-import re
 
 import rawpy
-
-from sklearn.model_selection import train_test_split
-from sklearn.utils import shuffle
-# import matplotlib.pyplot as plt
-from keras import datasets, layers, models
 
 import pandas as pd
 
 import os
 import datetime
 
-# Python program to demonstrate
-# HDF5 file
 import numpy as np
 
-# image processing
 import cv2
 
 from exiftool import ExifToolHelper
@@ -39,11 +30,6 @@ import subprocess
 import tensorflow as tf
 from tensorflow.keras.models import load_model
 ResizeMethod = tf.image.ResizeMethod
-
-
-# TODO good to check:
-# scikit-image - for image resize, compress
-# ImageDataGenerator - tensorflow/keras: for data augmentation (https://www.youtube.com/watch?v=nU_T2PPigUQ&ab_channel=JeffHeaton)
 
 
 def process_meta(exifMeta: list):
@@ -65,7 +51,6 @@ def process_meta(exifMeta: list):
     return processed
 
 
-def load_images_from_folder(folder: str):
     """
     loads images
     :param folder: filename in str
@@ -96,67 +81,7 @@ def load_images_from_folder(folder: str):
     return imagesWithMeta
 
 
-def get_dataset_partitions(df: pd.DataFrame, train_split=0.7, test_val_split=0.5):
 
-    train, testAndValid = train_test_split(df, test_size=(
-        1-train_split), random_state=42, shuffle=True)
-
-    test, valid = train_test_split(
-        testAndValid, test_size=test_val_split, random_state=43, shuffle=True)
-
-    return train, test, valid
-
-
-def convert(images, shuffleData=True, serialize=False, pklName: str = 'dataframe'):
-    if shuffleData:
-        # Specify seed to always have the same split distribution between runs
-        images = shuffle(images)
-
-    df = pd.DataFrame(images, columns=('raw', 'exif'))
-
-    train, test, valid = get_dataset_partitions(df)
-    if serialize:
-        df.to_pickle(f'{pklName}_all.pkl', protocol=4)
-        train.to_pickle(f'{pklName}_train.pkl', protocol=4)
-        test.to_pickle(f'{pklName}_test.pkl', protocol=4)
-        valid.to_pickle(f'{pklName}_valid.pkl', protocol=4)
-
-    # print(df)
-    # print(df.describe())
-    return train, test, valid
-
-
-def readFromPkl(filename: str):
-    df = pd.read_pickle(filename)
-    return get_dataset_partitions(df)
-
-
-def buildModel(in_shape, out_shape):
-
-    model = nn_models.Sequential()
-
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=in_shape))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.BatchNormalization())
-    model.add(layers.Conv2D(64, (3, 3), activation='relu'))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(64, (3, 3), activation='relu'))
-
-    model.add(layers.Flatten())
-
-    model.add(layers.Dense(512, activation='relu'))
-    model.add(layers.Dropout(0.1))
-    model.add(layers.Dense(256, activation='relu'))
-    model.add(layers.Dropout(0.15))
-    model.add(layers.Dense(128, activation='relu'))
-    model.add(layers.Dense(out_shape, activation='linear'))
-
-    # model.summary()
-
-    return model
-
-
-def compileAndTrainModel(model: models.Sequential, trainData: pd.DataFrame, testData: pd.DataFrame, epochs: int = 20):
     model.compile(optimizer='adam',
                   loss=tf.keras.losses.mean_squared_error(from_logits=True),
                   metrics='mae')
@@ -169,37 +94,7 @@ def compileAndTrainModel(model: models.Sequential, trainData: pd.DataFrame, test
                         validation_data=(test_images, test_labels))
 
 
-def readData(directory: str = 'resources\\raws'):
-    imageData = []
-    xmpData = []
 
-    for filename in os.listdir(directory):
-        fullName = os.path.join(directory, filename)
-        if fullName.endswith('.xmp'):
-            with ExifToolHelper() as et:
-                meta = et.execute_json(fullName)
-                processedExif = process_meta(meta)
-                xmpData.append(processedExif)
-        else:
-            rawPic = readRawSimple(fullName)
-            imageData.append(rawPic)
-
-    imagesWithMeta = zip(imageData, xmpData)
-    return imagesWithMeta
-
-
-def readRawSimple(fullNameWithPath: str = 'resources\\raws\\temp.ARW', new_size: list[int] = [133, 200], return_as_tensor: bool = False):
-    with rawpy.imread(fullNameWithPath) as rawImg:
-        rgbImg = rawImg.postprocess(rawpy.Params(use_camera_wb=True))
-        rgbNormed = rgbImg / 255.0
-        bilinear = tf.image.resize(
-            rgbNormed, new_size, method=ResizeMethod.BILINEAR, preserve_aspect_ratio=True)
-        if not return_as_tensor:
-            bilinear = bilinear.numpy
-        return bilinear
-
-
-def readRaw(path: str = 'resources\\raws', picName: str = 'temp.ARW'):
     """
     Read raw file from path with name picName
 
@@ -227,12 +122,7 @@ def readRaw(path: str = 'resources\\raws', picName: str = 'temp.ARW'):
 
 class Correction:
     num_pred: int = 5
-    # def __init__(self, colorTemp, tint, brightness, contrast, vibrance):
-    #     self.colorTemp = colorTemp
-    #     self.tint = tint
-    #     self.brightness = brightness
-    #     self.contrast = contrast
-    #     self.vibrance = vibrance
+
     def __init__(self, pred_list: list):
         list_len = len(pred_list)
         for i in range(Correction.num_pred - list_len):
@@ -264,75 +154,6 @@ def generate_xmp_result(path: str = 'resources\\raws', pictureName: str = 'sampl
     with open(fullFileNameXmp, "w") as xmpFile:
         xmpFile.write(xmpString)
 
-
-def cleanData(directory: str = 'resources\\rawTest') -> None:
-    files = os.listdir(directory)
-
-    # TODO unique constraint for the samples
-
-    acceptedExtensions = ['xmp', 'ARW', 'arw', 'NEF', 'nef', 'cr2', 'CR2']
-
-    for file in files:
-        fullName = os.path.join(directory, file)
-        name, extension = file.split('.')
-        if (extension not in acceptedExtensions):
-            os.remove(fullName)
-            files.remove(file)
-        else:
-            regex = re.compile(f'{name}.*')
-            count = len(list(filter(regex.match, files)))
-            if (count != 2):
-                # print(f'remove: {fullName}')
-                os.remove(fullName)
-                files.remove(file)
-
-
-def data_load_and_preprocess(directory: str = f'resources{os.path.sep}raws', pathToJPGs: str = f'resources{os.path.sep}genJPGs'):
-
-    rawImages: np.array = []
-    xmpData: np.array = []
-    files = os.listdir(directory)
-    if not os.path.exists(pathToJPGs):
-        os.mkdir(pathToJPGs)
-    convertedImageSize = [133, 200]
-
-    for file in files:
-        name, ext = file.split('.')
-        if ext != 'xmp':
-            with rawpy.imread(f'{directory}{os.path.sep}{file}') as rawImg:
-                rgbImg = rawImg.postprocess(rawpy.Params(use_camera_wb=True))
-                rgbNormed = rgbImg / 255.0
-                bilinear = tf.image.resize(
-                    rgbNormed, convertedImageSize, method=ResizeMethod.BILINEAR)
-                jpgName = f'{pathToJPGs}{os.path.sep}{name}.jpg'
-                tf.keras.utils.save_img(jpgName, bilinear)
-                rawImages.append(bilinear)
-        else:
-            with ExifToolHelper() as et:
-                fileName = f'{directory}{os.path.sep}{file}'
-                shutil.copyfile(fileName, f'{pathToJPGs}{os.path.sep}{file}')
-                meta = et.execute_json(fileName)
-                processedExif = tf.convert_to_tensor(process_meta(meta))
-                xmpData.append(processedExif)
-
-    # images = tf.keras.utils.image_dataset_from_directory(directory=directory, image_size=tuple(convertedImageSize))
-    print('test tensorflow load')
-
-    return rawImages, xmpData
-
-
-def saveDatasets(imgs, xmps, path: str = f'datasets{os.path.sep}ds') -> None:
-    ds = Dataset.from_dict({"img": imgs, "exif": xmps})
-    ds.save_to_disk(path)
-    # TODO push to google drive :D
-    print('dataset saved!')
-
-
-def loadDataset(path: str = f'datasets{os.path.sep}ds') -> Dataset:
-    ds = datasets.load_from_disk(path)
-    print('load done')
-    return ds
-
 convertedImageSize = [133, 200]
 
 def prepare_to_prediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir: str = f'resources{os.path.sep}predictOnThem', save_jpg: bool = False) -> list:
@@ -353,14 +174,17 @@ def prepare_to_prediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir:
             with rawpy.imread(f'{raw_dir}{os.path.sep}{file}') as rawImg:
                 rgbImg = rawImg.postprocess(rawpy.Params(output_bps=bits_for_color))
                 rgbNormed = rgbImg / scale_color_space
-                bilinear_img = tf.image.resize(
-                    rgbNormed, convertedImageSize, method=ResizeMethod.BILINEAR)
+                bilinear_img = tf.image.resize(rgbNormed, convertedImageSize, method=ResizeMethod.BILINEAR)
                 if save_jpg:
                     jpgName = f'{jpg_dir}{os.path.sep}{name}.jpg'
                     tf.keras.utils.save_img(jpgName, bilinear_img)
                 images.append(bilinear_img)
                 image_names.append(name)
 
+    # standardization step, the models have learnt on standardized data...
+    images = np.asarray(images)
+    images = tf.image.per_image_standardization(images).numpy()
+        
     print('preparePredict')
 
     return images, image_names
@@ -378,17 +202,19 @@ def load_models(path: str = 'models', file_format: str = 'h5'):
     return models
 
 
-def predict_on_models(images, models: list):
+def predict_on_models(images, models: list, verbose:bool = False):
+    verbosity = 'auto'
+    if verbose:
+        verbosity = '1'
+        
     all_predictions = []
     for img in images:
         img_predictions = []
         img = tf.expand_dims(img, axis=0)
         for m in models:
-            # print(img.shape)
-            m_res = m.predict(img)
+            m_res = m.predict(img, verbose=verbosity)
             m_res = np.ndarray.flatten(m_res)[0]
             img_predictions.append(m_res)
-        # print(img_predictions)
         all_predictions.append(img_predictions)
 
     return all_predictions
@@ -428,23 +254,24 @@ if __name__ == '__main__':
     
     # Defaults
     sep = os.path.sep
-    raw_source_path = f'resources{sep}raws'
+    raw_source_path = f'resources{sep}konstanz_test_set'
     lr_target_path = f'resources{sep}auto_imp_dir'
     path_to_models = 'models'
     lr_executable_path = f'C:{sep}Program Files{sep}Adobe{sep}Adobe Lightroom Classic{sep}Lightroom.exe'
     
     rawBigger_path = f'resources{sep}rawTest'
     
-    program_description = "This program helps to speed up retouching"
+    program_description = "This program helps speeding up retouch workflows"
     
-    # keep LR exec and LR target dir in environment variables
+    # keep LR exec in environment variables
     parser = argparse.ArgumentParser(description=program_description)
     parser.add_argument("raw_source_dir", type=pathlib.Path, help='path to the raw image source directory')
-    parser.add_argument("--lr_target_dir", default=lr_target_path, type=pathlib.Path, help='target dir for lightroom open, here will the predictions and the original photos land')
-    parser.add_argument("-m", "--path_to_models", type=pathlib.Path, default=path_to_models, help='Specify the path to the models, which are required to predict retouch values')
+    parser.add_argument("--lr_target_dir", default=lr_target_path, type=pathlib.Path, help='target dir for Lightroom open, here will the predictions and the original photos land')
+    parser.add_argument("-m", "--path_to_models", type=pathlib.Path, default=path_to_models, help='Specify the path to the models, which are required to predict retouch values. Default is ./models')
     parser.add_argument('-o',"--open_up_LR", choices=('True','False'), help='Switches ON/OFF auto-Lightroom start', default='True')
     parser.add_argument("-LRe", "--lr_executable_path", type=pathlib.Path, default=lr_executable_path, help=f'Specify where to find Lightroom executable, default: {lr_executable_path}')
-    parser.add_argument("-c", '--create_copy', choices=('True','False'), help='Leave raw files where they were or bring them under Lightroom', default='False')
+    parser.add_argument("-c", '--create_copy', choices=('True','False'), help='Leave raw files where they were or bring them under Lightroom, default is False', default='False')
+    parser.add_argument("-v", '--verbose', help='Verbosity switch', action="store_true")
     
     args = parser.parse_args()
     # argument assignments
@@ -453,6 +280,7 @@ if __name__ == '__main__':
     path_to_models = str(args.path_to_models)
     open_lr_after_pred = bool(strtobool(args.open_up_LR))
     create_copy = bool(strtobool(args.create_copy))
+    verbose = bool(args.verbose)
     
     # get LR exe from configured env variable
     env_LR = os.environ.get('LR') # returns None if not present
@@ -471,18 +299,18 @@ if __name__ == '__main__':
     print(f' LR executable: {lr_executable_path}')
     print(f' create copy: {create_copy}')
     print(' ----- ')
-    print('Diagnostic:')
-    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-    print('Tensorflow version: ' + tf.__version__)
+    
+    if verbose:
+        print('Diagnostic:')
+        print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+        print('Tensorflow version: ' + tf.__version__)
     
     nn_models = load_models(path=path_to_models)
-    # imgs, xmps = data_load_and_preprocess(directory=rawBigger_path)
-    # saveDatasets(imgs, xmps)
 
     images, image_names = prepare_to_prediction(raw_source_path)
-    preds = predict_on_models(images, nn_models)
-    pred_result = list(zip(image_names, preds))
-    generate_batch_xmps(raw_source_path, pred_result)
+    predictions = predict_on_models(images, nn_models, verbose=verbose)
+    prediction_results = list(zip(image_names, predictions))
+    generate_batch_xmps(raw_source_path, prediction_results)
     
     move_results(raw_source_path, lr_target_path, create_copy=create_copy)
     
@@ -490,18 +318,3 @@ if __name__ == '__main__':
         open_lightroom(lr_executable_path)
     
     print('--- script ended ---')
-
-    # print(pred_result)
-    # ----
-    # cleanData(path)
-    # imagesWithMeta = list(readData(path))
-    # tr, val, tst = convert(imagesWithMeta)
-    # ----
-    # cleanData(path)
-    # imgs, xmps = data_load_and_preprocess(directory=rawBigger_path)
-    # saveDatasets(imgs, xmps)
-    # ----
-    # print(val)
-    # rgbNormed = readRaw()
-    # xmpTest = generateXmpResult()
-    # rawTest = readRawSimple()

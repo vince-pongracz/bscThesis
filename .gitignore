@@ -1,4 +1,12 @@
 scripts_new/__pycache__
 scripts_new/resources/
-scripts_new/models/
+!scripts_new/resources/konstanz_ds
 scripts_new/datasets/ds_*
+\~$akdolgozat_MKMDJO.docx
+\~$skDescription_MKMDJO.docx
+\~WRL0003.tmp
+\~WRL3453.tmp
+\bme_tvsz_part_00002668.pdf
+\down
+\resource_docs
+\konstanz_models.zip
