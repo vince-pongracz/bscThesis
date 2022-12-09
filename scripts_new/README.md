@@ -1,6 +1,7 @@
 
 Needed packages:
 
+```txt
 distutils.util
 pathlib
 argparse
@@ -18,6 +19,7 @@ tensorboard
 subprocess
 tensorflow
 re
+```
 
-It is also required to be installed the CLI app exiftool:
+It is also required to be installed the CLI application exiftool:
 https://exiftool.org/ 

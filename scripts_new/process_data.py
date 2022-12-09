@@ -1,4 +1,4 @@
-
+# Imports:
 import os
 import re
 
@@ -18,6 +18,13 @@ from datasets import Dataset
 
 from datetime import datetime
 
+# Functions, methods, classes
+
+"""
+Recieves a list with metadata, which is a dictonary and extracts the values from target tags.
+:param exifmeta: metadata
+:return: list of target values for one image
+"""
 def process_meta(exifMeta: list):
     # this transformation is required to get the exif fields
     exifMeta = exifMeta[0]
@@ -36,7 +43,11 @@ def process_meta(exifMeta: list):
     ]
     return processed
 
-def cleanData(directory: str = 'resources\\rawTest') -> None:
+
+"""
+Clean up data (remove files from datasets, which has not the allowed extension, which are duplicates)    
+"""
+def clean_data(directory: str = 'resources\\rawTest') -> None:
     files = os.listdir(directory)
 
     # TODO unique constraint for the samples
@@ -57,6 +68,10 @@ def cleanData(directory: str = 'resources\\rawTest') -> None:
                 os.remove(fullName)
                 files.remove(file)
 
+
+"""
+Load and preprocess raw images and XMP corrections from a directory
+"""
 def data_load_and_preprocess(directory: str = f'resources{os.path.sep}raws', path_to_generated_jpgs: str = f'resources{os.path.sep}genJPGs'):
 
     rawImages: np.array = []
@@ -97,7 +112,12 @@ def data_load_and_preprocess(directory: str = f'resources{os.path.sep}raws', pat
 
     return rawImages, xmpData
 
-def saveDatasets(imgs, xmps, target_path: str = f'datasets{os.path.sep}ds', add_timestamp: bool = True) -> None:
+
+"""
+Save the preprocessed data as binary Dataset (backed by an arrow table)
+This step compresses the huge amount of data
+"""
+def save_datasets(imgs, xmps, target_path: str = f'datasets{os.path.sep}ds', add_timestamp: bool = True) -> None:
     ds = Dataset.from_dict({"img": imgs, "exif": xmps})
     
     if add_timestamp:
@@ -110,19 +130,22 @@ def saveDatasets(imgs, xmps, target_path: str = f'datasets{os.path.sep}ds', add_
     print('dataset saved!')
 
 
-
+# Main process, do the job:
 print('PREPROCESS DATA')
 print('---script starts---')
 
-# edit these
+# edit these to preprecess other images
 raw_bigger_path = f'resources{os.path.sep}mixed_ds'
 path_to_gen_jpgs = f'resources{os.path.sep}tempjpgs_mixed'
 
 # can stay like that
 ds_path_default = f'datasets{os.path.sep}ds_mixed'
 
-cleanData(raw_bigger_path)
+# clean
+clean_data(raw_bigger_path)
+# preprocess
 imgs, xmps = data_load_and_preprocess(directory=raw_bigger_path, path_to_generated_jpgs=path_to_gen_jpgs)
-saveDatasets(imgs, xmps, target_path=ds_path_default)
+# save
+save_datasets(imgs, xmps, target_path=ds_path_default)
 
 print('---script ended---')

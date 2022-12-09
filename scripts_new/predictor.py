@@ -1,4 +1,5 @@
 
+# Imports:
 from distutils.util import strtobool
 import pathlib
 
@@ -31,7 +32,13 @@ import tensorflow as tf
 from tensorflow.keras.models import load_model
 ResizeMethod = tf.image.ResizeMethod
 
+# Functions, methods, classes
 
+"""
+Recieves a list with metadata, which is a dictonary and extracts the values from target tags.
+:param exifmeta: metadata
+:return: list of target values for one image
+"""
 def process_meta(exifMeta: list):
     # this transformation is required to get the exif fields
     exifMeta = exifMeta[0]
@@ -51,75 +58,9 @@ def process_meta(exifMeta: list):
     return processed
 
 
-    """
-    loads images
-    :param folder: filename in str
-    :return: list of images in dim. [x * y * z]
-    """
-    imagesWithMeta = []
-    for filename in os.listdir(folder):
-        fullName = os.path.join(folder, filename)
-        img = cv2.imread(fullName)
-
-        with ExifToolHelper() as et:
-            meta = et.execute_json(fullName)
-            processedExif = process_meta(meta)
-            if img is not None:
-                normed_img = img / 255
-                compressed = tf.image.adjust_jpeg_quality(normed_img, 90)
-                new_size = [200, 300]
-                bilin = tf.image.resize(
-                    compressed, new_size, method=ResizeMethod.BILINEAR, preserve_aspect_ratio=True).numpy()
-                # imagesWithMeta.append({
-                #     'picture': bilin,
-                #     'exif': processedExif})
-                imagesWithMeta.append({
-                    'pic': bilin,
-                    'exif': processedExif
-                })
-
-    return imagesWithMeta
-
-
-
-    model.compile(optimizer='adam',
-                  loss=tf.keras.losses.mean_squared_error(from_logits=True),
-                  metrics='mae')
-
-    # split trainData, testData into images-label
-    train_images, train_labels = trainData['pic'], trainData['exif']
-    test_images, test_labels = testData['pic'], testData['exif']
-
-    history = model.fit(train_images, train_labels, epochs=epochs,
-                        validation_data=(test_images, test_labels))
-
-
-
-    """
-    Read raw file from path with name picName
-
-    Args:
-        path (str, optional): Path to dir. Loads raws from this dir. Defaults to 'resources\raws'.
-        picName (str, optional): Name of the picture to load. Defaults to 'temp.ARW'.
-
-    # TODO extend
-    Returns:
-        _type_: _description_
-    """
-    with rawpy.imread(os.path.join(path, picName)) as rawImg:
-        # rawImg = rawImg.raw_image # gets raw image in ndarray, not RGB format
-        # convert raw image ndarray into sRGB
-        rgbImg = rawImg.postprocess(rawpy.Params(use_camera_wb=True))
-        rgbNormed = rgbImg / 255.0
-
-        # show image
-        # size = 4
-        # plt.figure(figsize=(size,size))
-        # plt.imshow(rgbImg)
-        # plt.show()
-        return rgbNormed
-
-
+"""
+Data structure to store image corrections
+"""
 class Correction:
     num_pred: int = 5
 
@@ -131,6 +72,11 @@ class Correction:
         [self.colorTemp, self.tint, self.brightness, self.contrast, self.vibrance] = pred_list
 
 
+
+
+"""
+Writes the XMP file to path for pictureName file. With correction data will be the XMP filled.
+"""
 def generate_xmp_result(path: str = 'resources\\raws', pictureName: str = 'sample4.NEF', correction: Correction = Correction([7000, -4, 1.3, 10, 4])):
     fullFileNameRaw = os.path.join(path, pictureName)
     fullFileNameXmp = fullFileNameRaw.split(".")[0] + ".xmp"
@@ -154,8 +100,14 @@ def generate_xmp_result(path: str = 'resources\\raws', pictureName: str = 'sampl
     with open(fullFileNameXmp, "w") as xmpFile:
         xmpFile.write(xmpString)
 
+# image size. To this size will be converted the images.
 convertedImageSize = [133, 200]
 
+
+
+"""
+prepare and preprocess images for the prediction
+"""
 def prepare_to_prediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir: str = f'resources{os.path.sep}predictOnThem', save_jpg: bool = False) -> list:
 
     images: np.array = []
@@ -190,6 +142,9 @@ def prepare_to_prediction(raw_dir: str = f'resources{os.path.sep}raws', jpg_dir:
     return images, image_names
 
 
+"""
+Load models from path.
+"""
 def load_models(path: str = 'models', file_format: str = 'h5'):
     print(f'load models from: {path}')
     model_files = os.listdir(path)
@@ -201,7 +156,9 @@ def load_models(path: str = 'models', file_format: str = 'h5'):
         models.append(model)
     return models
 
-
+"""
+Predict every choosen image property for every image
+"""
 def predict_on_models(images, models: list, verbose:bool = False):
     verbosity = 'auto'
     if verbose:
@@ -219,13 +176,17 @@ def predict_on_models(images, models: list, verbose:bool = False):
 
     return all_predictions
 
-
+"""
+Generate XMP corrections for multiple images
+"""
 def generate_batch_xmps(target_dir:str, img_names_and_predictions):
     for pic_name, pred in img_names_and_predictions:
         corr = Correction(pred)
         generate_xmp_result(target_dir, pictureName=pic_name, correction=corr)
     
-
+"""
+Move or copy the images, if it is specified.
+"""
 def move_results(source: str, target: str, create_copy: bool = False) -> None:
     allfiles = os.listdir(source)
     
@@ -244,11 +205,13 @@ def move_results(source: str, target: str, create_copy: bool = False) -> None:
 
     print('move done')
     
-
+"""
+Open and execute Lightroom.exe
+"""
 def open_lightroom(lr_path:str):
     subprocess.run([lr_path])
     
-
+# Main process, do the job:
 if __name__ == '__main__':
     assert (pd.__version__ == '1.3.5')
     
@@ -289,6 +252,7 @@ if __name__ == '__main__':
     else:
         lr_executable_path = str(args.lr_executable_path)
     
+    # Prompt some valueable info about the current run config
     print('--- start script ---')
     print(' with the following settings :')
     print(' ----- ')
@@ -305,16 +269,25 @@ if __name__ == '__main__':
         print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
         print('Tensorflow version: ' + tf.__version__)
     
+    # load
     nn_models = load_models(path=path_to_models)
 
+    # prepare
     images, image_names = prepare_to_prediction(raw_source_path)
+    # predict
     predictions = predict_on_models(images, nn_models, verbose=verbose)
+    # transform
     prediction_results = list(zip(image_names, predictions))
+    # generate output
     generate_batch_xmps(raw_source_path, prediction_results)
     
+    # post task, move images
     move_results(raw_source_path, lr_target_path, create_copy=create_copy)
     
+    # open Lightroom, when it was asked
     if open_lr_after_pred:
         open_lightroom(lr_executable_path)
     
     print('--- script ended ---')
+    
+    
